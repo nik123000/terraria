@@ -1,0 +1,2155 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Terraria 2D Sandbox Game - Master Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #050811;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        canvas {
+            display: block;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+        .glass-panel {
+            background: rgba(11, 17, 32, 0.92);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+        }
+        .crafting-scroll::-webkit-scrollbar {
+            width: 6px;
+        }
+        .crafting-scroll::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 4px;
+        }
+        .crafting-scroll::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.25);
+            border-radius: 4px;
+        }
+        .crafting-scroll::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.45);
+        }
+    </style>
+</head>
+<body class="relative flex items-center justify-center">
+
+    <!-- Game Canvas -->
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- UI Overlay: HUD -->
+    <div id="hud" class="absolute top-4 left-4 right-4 pointer-events-none flex justify-between items-start z-10">
+        <!-- Player Stats (Left) -->
+        <div class="flex flex-col gap-2">
+            <!-- Health Bar -->
+            <div class="glass-panel p-2.5 rounded-xl flex items-center gap-3 w-72 pointer-events-auto">
+                <span class="text-xs font-black text-red-400 tracking-wider w-8">HP</span>
+                <div class="w-full bg-slate-900 rounded-lg h-4 overflow-hidden border border-red-500/30 relative">
+                    <div id="hpFill" class="bg-gradient-to-r from-red-600 via-rose-500 to-pink-400 h-full transition-all duration-150" style="width: 100%;"></div>
+                    <span id="hpText" class="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">100 / 100</span>
+                </div>
+            </div>
+            <!-- Defense & Armor Indicator -->
+            <div class="glass-panel px-3 py-1.5 rounded-xl flex items-center gap-2 w-max pointer-events-auto text-xs text-amber-300 font-bold border border-amber-500/30">
+                <span>🛡️ Захист:</span>
+                <span id="defenseText" class="text-white">0</span>
+                <span id="armorNameText" class="text-slate-400 font-normal ml-2 text-[11px]">(Без броні)</span>
+            </div>
+        </div>
+
+        <!-- Boss Health Bar (Top Center) -->
+        <div id="bossHpContainer" class="hidden absolute left-1/2 -translate-x-1/2 top-4 w-96 glass-panel p-3 rounded-2xl border border-red-500/50 shadow-2xl flex flex-col items-center gap-1.5 z-20">
+            <div class="flex justify-between w-full text-xs font-black tracking-wider text-red-400">
+                <span id="bossNameText">👁️ ОКО КТУЛХУ</span>
+                <span id="bossHpPercentText">100%</span>
+            </div>
+            <div class="w-full bg-slate-950 rounded-lg h-5 overflow-hidden border border-red-600/50 relative">
+                <div id="bossHpFill" class="bg-gradient-to-r from-red-700 via-red-500 to-rose-400 h-full transition-all duration-150" style="width: 100%;"></div>
+                <span id="bossHpText" class="absolute inset-0 flex items-center justify-center text-[11px] font-black text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">500 / 500</span>
+            </div>
+        </div>
+
+        <!-- Environment Info (Right) -->
+        <div class="glass-panel px-4 py-2.5 rounded-xl text-right pointer-events-auto flex items-center gap-3">
+            <div>
+                <div id="timeText" class="text-sm font-black text-amber-300">08:00 AM</div>
+                <div id="biomeText" class="text-[11px] text-slate-300 font-medium">Лісовий Біом</div>
+            </div>
+            <div id="sunMoonIcon" class="w-9 h-9 rounded-full bg-amber-400 shadow-[0_0_15px_rgba(251,191,36,0.7)] flex items-center justify-center text-sm font-bold border border-amber-200">☀️</div>
+        </div>
+    </div>
+
+    <!-- Hotbar Overlay (Bottom Center) -->
+    <div class="absolute bottom-4 left-1/2 -translate-x-1/2 pointer-events-auto z-10 flex flex-col items-center gap-2">
+        <div id="hotbar" class="glass-panel p-2 rounded-2xl flex gap-2 border border-white/10 shadow-2xl">
+            <!-- Dynamic Hotbar Slots -->
+        </div>
+    </div>
+
+    <!-- Dedicated Inventory Modal [F] -->
+    <div id="inventoryMenu" class="hidden absolute inset-0 bg-slate-950/80 backdrop-blur-md z-20 flex items-center justify-center pointer-events-auto">
+        <div class="glass-panel w-full max-w-3xl rounded-2xl p-6 border border-white/20 shadow-2xl flex flex-col max-h-[88vh]">
+            <!-- Header -->
+            <div class="flex justify-between items-center mb-4 border-b border-white/10 pb-3">
+                <h2 class="text-xl font-black text-amber-400 tracking-wide flex items-center gap-2">
+                    🎒 Інвентар та Статистика Персонажа
+                </h2>
+                <button id="closeInventoryBtn" class="text-slate-400 hover:text-white text-lg px-3 py-1 rounded-lg bg-white/5 hover:bg-white/10 transition">✕</button>
+            </div>
+
+            <div class="grid grid-cols-3 gap-6 flex-1 overflow-hidden">
+                <!-- Main Grid Inventory (20 Slots) -->
+                <div class="col-span-2 flex flex-col">
+                    <span class="text-xs text-slate-400 mb-2 uppercase font-semibold">Рюкзак (Предмети)</span>
+                    <div id="inventoryGrid" class="grid grid-cols-5 gap-2.5 overflow-y-auto pr-1">
+                        <!-- Dynamic Backpack Grid -->
+                    </div>
+                </div>
+
+                <!-- Equipment & Stats Sidebar -->
+                <div class="glass-panel p-4 rounded-xl flex flex-col justify-between bg-white/5 border border-white/10">
+                    <div>
+                        <h3 class="text-sm font-bold text-amber-300 border-b border-white/10 pb-2 mb-3">Спорядження та Характеристики</h3>
+                        
+                        <!-- Armor Slot -->
+                        <div class="mb-4">
+                            <span class="text-[11px] text-slate-400 block mb-1 font-semibold">Екіпірована Броня:</span>
+                            <div id="equippedArmorSlot" class="w-full p-2.5 bg-slate-900/80 border border-amber-500/30 rounded-xl flex items-center justify-between">
+                                <span id="invArmorName" class="text-xs text-slate-300 font-semibold">(Без броні)</span>
+                                <button id="unequipArmorBtn" class="hidden text-[10px] bg-red-500/20 hover:bg-red-500/40 text-red-300 px-2 py-1 rounded border border-red-500/30">Зняти</button>
+                            </div>
+                        </div>
+
+                        <!-- Stats Overview -->
+                        <div class="space-y-2 text-xs">
+                            <div class="flex justify-between text-slate-300">
+                                <span>❤️ Здоров'я:</span>
+                                <span id="invStatHp" class="font-bold text-red-400">100 / 100</span>
+                            </div>
+                            <div class="flex justify-between text-slate-300">
+                                <span>🛡️ Захист:</span>
+                                <span id="invStatDef" class="font-bold text-amber-400">0</span>
+                            </div>
+                            <div class="flex justify-between text-slate-300">
+                                <span>⚔️ Активна Зброя:</span>
+                                <span id="invStatWeapon" class="font-bold text-slate-200">Мідний Меч</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Trash Slot -->
+                    <div class="mt-4 pt-3 border-t border-white/10">
+                        <span class="text-[11px] text-slate-400 block mb-1 font-semibold">Смітник (Видалити предмет):</span>
+                        <div id="trashSlot" class="w-full h-12 bg-red-950/30 border border-red-500/30 rounded-xl flex items-center justify-center text-xs text-red-400 cursor-pointer hover:bg-red-950/50 transition">
+                            🗑️ Натисніть на слот у рюкзаку, щоб викинути
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="text-xs text-slate-400 mt-4 text-center">Натисніть <kbd class="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-700 text-slate-300">F</kbd> або <kbd class="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-700 text-slate-300">ESC</kbd> щоб закрити</div>
+        </div>
+    </div>
+
+    <!-- Crafting Menu Modal [E] -->
+    <div id="craftingMenu" class="hidden absolute inset-0 bg-slate-950/80 backdrop-blur-md z-20 flex items-center justify-center pointer-events-auto">
+        <div class="glass-panel w-full max-w-2xl rounded-2xl p-6 border border-white/20 shadow-2xl flex flex-col max-h-[88vh]">
+            <!-- Header -->
+            <div class="flex justify-between items-center mb-3 border-b border-white/10 pb-3">
+                <h2 class="text-xl font-black text-amber-400 tracking-wide flex items-center gap-2">
+                    🔨 Меню Крафту
+                </h2>
+                <div id="nearbyStationsText" class="text-xs text-amber-300/80 bg-amber-500/10 px-3 py-1 rounded-lg border border-amber-500/20 font-semibold">
+                    Станції поруч: Руки
+                </div>
+                <button id="closeCraftingBtn" class="text-slate-400 hover:text-white text-lg px-3 py-1 rounded-lg bg-white/5 hover:bg-white/10 transition">✕</button>
+            </div>
+
+            <!-- Page Navigation Tabs -->
+            <div class="flex gap-2 mb-4 border-b border-white/10 pb-2">
+                <button id="tabBtn1" class="px-3.5 py-1.5 rounded-lg text-xs font-bold transition bg-amber-500 text-slate-950 shadow">
+                    1. Базовий крафт
+                </button>
+                <button id="tabBtn2" class="px-3.5 py-1.5 rounded-lg text-xs font-bold transition bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700">
+                    2. Зброя та Броня
+                </button>
+                <button id="tabBtn3" class="px-3.5 py-1.5 rounded-lg text-xs font-bold transition bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700">
+                    3. Переплавка
+                </button>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4 flex-1 overflow-hidden">
+                <!-- Recipes List -->
+                <div class="flex flex-col">
+                    <span class="text-xs text-slate-400 mb-2 uppercase font-semibold">Доступні рецепти</span>
+                    <div id="recipeList" class="crafting-scroll overflow-y-auto pr-2 space-y-2 flex-1">
+                        <!-- Recipes rendered dynamically -->
+                    </div>
+                </div>
+
+                <!-- Selected Item Details -->
+                <div class="glass-panel p-4 rounded-xl flex flex-col justify-between bg-white/5 border border-white/10">
+                    <div id="recipeDetails">
+                        <div class="text-center py-8 text-slate-400 text-sm">Оберіть предмет зі списку.</div>
+                    </div>
+                    <button id="craftBtn" disabled class="w-full py-3 bg-amber-500 hover:bg-amber-400 disabled:bg-slate-800 text-slate-950 disabled:text-slate-500 font-extrabold rounded-xl transition shadow-lg disabled:shadow-none">
+                        Створити Предмет
+                    </button>
+                </div>
+            </div>
+            <div class="text-xs text-slate-400 mt-4 text-center">Натисніть <kbd class="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-700 text-slate-300">E</kbd> або <kbd class="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-700 text-slate-300">ESC</kbd> щоб закрити</div>
+        </div>
+    </div>
+
+    <!-- Death & Respawn Modal Screen -->
+    <div id="deathScreen" class="hidden absolute inset-0 bg-red-950/90 backdrop-blur-md z-30 flex flex-col items-center justify-center pointer-events-auto">
+        <div class="text-center space-y-6">
+            <h1 class="text-5xl font-black text-red-500 tracking-wider drop-shadow-[0_4px_10px_rgba(0,0,0,0.8)]">
+                Ти загинув!
+            </h1>
+            <p id="deathReasonText" class="text-slate-300 text-sm max-w-md">Вас здолали небезпеки цього світу...</p>
+            <button id="respawnBtn" class="px-8 py-3.5 bg-red-600 hover:bg-red-500 text-white font-extrabold text-lg rounded-2xl shadow-2xl transition hover:scale-105 active:scale-95 border border-red-400/50">
+                Відродитися 🔄
+            </button>
+        </div>
+    </div>
+
+    <!-- Controls Overlay Hint -->
+    <div class="absolute top-4 left-1/2 -translate-x-1/2 pointer-events-none opacity-80 text-[11px] text-slate-200 bg-slate-900/90 px-4 py-1.5 rounded-full border border-white/15 hidden md:block font-medium shadow-md">
+        [A/D] Рух | [Space/W] Стрибок | [ЛКМ] Атака/Копати | [ПКМ] Ставити/Використати | [1-9 / Скрол] Хотбар | [F] Інвентар | [E] Крафт
+    </div>
+
+    <script>
+        class SoundEngine {
+            constructor() {
+                this.ctx = null;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+            }
+
+            playJump() {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(160, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(420, this.ctx.currentTime + 0.12);
+                gain.gain.setValueAtTime(0.12, this.ctx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.12);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.12);
+            }
+
+            playMine() {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(140, this.ctx.currentTime);
+                osc.frequency.setValueAtTime(90, this.ctx.currentTime + 0.04);
+                gain.gain.setValueAtTime(0.08, this.ctx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.08);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.08);
+            }
+
+            playPlace() {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(240, this.ctx.currentTime);
+                osc.frequency.setValueAtTime(360, this.ctx.currentTime + 0.03);
+                gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.06);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.06);
+            }
+
+            playSwing() {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(320, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(90, this.ctx.currentTime + 0.09);
+                gain.gain.setValueAtTime(0.06, this.ctx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.09);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.09);
+            }
+
+            playHurt() {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(220, this.ctx.currentTime);
+                osc.frequency.linearRampToValueAtTime(60, this.ctx.currentTime + 0.18);
+                gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.18);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.18);
+            }
+
+            playShoot() {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(450, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(150, this.ctx.currentTime + 0.1);
+                gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.1);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.1);
+            }
+
+            playPowerup() {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(220, this.ctx.currentTime);
+                osc.frequency.setValueAtTime(330, this.ctx.currentTime + 0.08);
+                osc.frequency.setValueAtTime(440, this.ctx.currentTime + 0.16);
+                osc.frequency.setValueAtTime(660, this.ctx.currentTime + 0.24);
+                gain.gain.setValueAtTime(0.15, this.ctx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.35);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.35);
+            }
+
+            playBossRoar() {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(90, this.ctx.currentTime);
+                osc.frequency.linearRampToValueAtTime(40, this.ctx.currentTime + 0.6);
+                gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.6);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.6);
+            }
+        }
+
+        const audio = new SoundEngine();
+
+        const TILE_SIZE = 16;
+        const WORLD_WIDTH = 240;
+        const WORLD_HEIGHT = 140;
+        const GRAVITY = 0.38;
+
+        const BLOCKS = {
+            AIR: 0,
+            GRASS: 1,
+            DIRT: 2,
+            STONE: 3,
+            WOOD: 4,
+            LEAVES: 5,
+            COAL: 6,
+            IRON: 7,
+            GOLD: 8,
+            TORCH: 9,
+            PLANKS: 10,
+            WORKBENCH: 11,
+            FURNACE: 12,
+            ANVIL: 13,
+            LIFE_CRYSTAL: 14
+        };
+
+        const ITEMS = {
+            SLIME_SWORD: 'slime_sword',
+            COPPER_SWORD: 'copper_sword',
+            COPPER_PICKAXE: 'copper_pickaxe',
+            COPPER_AXE: 'copper_axe',
+            IRON_BAR: 'iron_bar',
+            IRON_SWORD: 'iron_sword',
+            IRON_PICKAXE: 'iron_pickaxe',
+            IRON_AXE: 'iron_axe',
+            IRON_ARMOR: 'iron_armor',
+            GOLD_BAR: 'gold_bar',
+            GOLD_SWORD: 'gold_sword',
+            GOLD_PICKAXE: 'gold_pickaxe',
+            GOLD_AXE: 'gold_axe',
+            GOLD_ARMOR: 'gold_armor',
+            BOW: 'bow',
+            ARROW: 'arrow',
+            GEL: 'gel',
+            POTION: 'potion',
+            LIFE_CRYSTAL_ITEM: 'life_crystal_item',
+            BOSS_SUMMON: 'boss_summon'
+        };
+
+        const BLOCK_DATA = {
+            [BLOCKS.AIR]: { name: 'Повітря', solid: false, hardness: 0 },
+            [BLOCKS.GRASS]: { name: 'Трава', solid: true, hardness: 30, drop: BLOCKS.DIRT, toolType: 'pickaxe' },
+            [BLOCKS.DIRT]: { name: 'Земля', solid: true, hardness: 25, drop: BLOCKS.DIRT, toolType: 'pickaxe' },
+            [BLOCKS.STONE]: { name: 'Камінь', solid: true, hardness: 80, drop: BLOCKS.STONE, toolType: 'pickaxe' },
+            [BLOCKS.WOOD]: { name: 'Дерево', solid: false, hardness: 40, drop: BLOCKS.WOOD, toolType: 'axe' },
+            [BLOCKS.LEAVES]: { name: 'Листя', solid: false, hardness: 10, drop: null, toolType: 'axe' },
+            [BLOCKS.COAL]: { name: 'Вугілля', solid: true, hardness: 100, drop: BLOCKS.COAL, toolType: 'pickaxe' },
+            [BLOCKS.IRON]: { name: 'Залізна Руда', solid: true, hardness: 130, drop: BLOCKS.IRON, toolType: 'pickaxe' },
+            [BLOCKS.GOLD]: { name: 'Золота Руда', solid: true, hardness: 170, drop: BLOCKS.GOLD, toolType: 'pickaxe' },
+            [BLOCKS.TORCH]: { name: 'Смолоскип', solid: false, hardness: 5, drop: BLOCKS.TORCH, toolType: 'any' },
+            [BLOCKS.PLANKS]: { name: 'Дошки', solid: true, hardness: 45, drop: BLOCKS.PLANKS, toolType: 'axe' },
+            [BLOCKS.WORKBENCH]: { name: 'Верстак', solid: true, hardness: 50, drop: BLOCKS.WORKBENCH, toolType: 'axe' },
+            [BLOCKS.FURNACE]: { name: 'Піч', solid: true, hardness: 70, drop: BLOCKS.FURNACE, toolType: 'pickaxe', station: 'furnace' },
+            [BLOCKS.ANVIL]: { name: 'Ковальня', solid: true, hardness: 90, drop: BLOCKS.ANVIL, toolType: 'pickaxe', station: 'anvil' },
+            [BLOCKS.LIFE_CRYSTAL]: { name: 'Кристал Життя', solid: false, hardness: 120, drop: ITEMS.LIFE_CRYSTAL_ITEM, toolType: 'pickaxe' }
+        };
+
+        class TextureGenerator {
+            constructor() {
+                this.cache = {};
+                this.generateAll();
+            }
+
+            createCanvas() {
+                const c = document.createElement('canvas');
+                c.width = TILE_SIZE;
+                c.height = TILE_SIZE;
+                return { c, ctx: c.getContext('2d') };
+            }
+
+            generateAll() {
+                // Grass
+                let { c, ctx } = this.createCanvas();
+                ctx.fillStyle = '#7c3f1d';
+                ctx.fillRect(0, 0, 16, 16);
+                ctx.fillStyle = '#5c2d13';
+                ctx.fillRect(2, 9, 4, 3); ctx.fillRect(10, 12, 4, 3);
+                ctx.fillStyle = '#22c55e';
+                ctx.fillRect(0, 0, 16, 5);
+                ctx.fillStyle = '#16a34a';
+                ctx.fillRect(0, 0, 16, 2);
+                ctx.fillStyle = '#22c55e';
+                ctx.fillRect(2, 5, 2, 2); ctx.fillRect(7, 5, 3, 3); ctx.fillRect(13, 5, 2, 2);
+                this.cache[BLOCKS.GRASS] = c;
+
+                // Dirt
+                ({ c, ctx } = this.createCanvas());
+                ctx.fillStyle = '#7c3f1d';
+                ctx.fillRect(0, 0, 16, 16);
+                ctx.fillStyle = '#5c2d13';
+                ctx.fillRect(1, 2, 3, 3); ctx.fillRect(8, 4, 4, 3); ctx.fillRect(3, 10, 3, 4); ctx.fillRect(11, 10, 3, 3);
+                ctx.fillStyle = '#9a5327';
+                ctx.fillRect(5, 1, 2, 2); ctx.fillRect(12, 2, 2, 2); ctx.fillRect(2, 7, 2, 2);
+                this.cache[BLOCKS.DIRT] = c;
+
+                // Stone
+                ({ c, ctx } = this.createCanvas());
+                ctx.fillStyle = '#64748b';
+                ctx.fillRect(0, 0, 16, 16);
+                ctx.fillStyle = '#334155';
+                ctx.fillRect(2, 2, 5, 4); ctx.fillRect(9, 7, 5, 5); ctx.fillRect(1, 11, 6, 3);
+                ctx.fillStyle = '#94a3b8';
+                ctx.fillRect(0, 0, 16, 1); ctx.fillRect(0, 0, 1, 16);
+                this.cache[BLOCKS.STONE] = c;
+
+                // Wood
+                ({ c, ctx } = this.createCanvas());
+                ctx.fillStyle = '#513726';
+                ctx.fillRect(0, 0, 16, 16);
+                ctx.fillStyle = '#3b2619';
+                ctx.fillRect(3, 0, 2, 16); ctx.fillRect(10, 0, 3, 16);
+                ctx.fillStyle = '#6b4a35';
+                ctx.fillRect(0, 0, 1, 16); ctx.fillRect(7, 0, 2, 16);
+                this.cache[BLOCKS.WOOD] = c;
+
+                // Leaves
+                ({ c, ctx } = this.createCanvas());
+                ctx.fillStyle = '#15803d';
+                ctx.fillRect(0, 0, 16, 16);
+                ctx.fillStyle = '#22c55e';
+                ctx.fillRect(2, 2, 4, 4); ctx.fillRect(8, 3, 5, 4); ctx.fillRect(3, 9, 5, 5);
+                ctx.fillStyle = '#166534';
+                ctx.fillRect(0, 7, 3, 3); ctx.fillRect(12, 10, 3, 4);
+                this.cache[BLOCKS.LEAVES] = c;
+
+                // Ores
+                this.cache[BLOCKS.COAL] = this.createOreTexture('#1e293b', '#020617');
+                this.cache[BLOCKS.IRON] = this.createOreTexture('#cbd5e1', '#f1f5f9');
+                this.cache[BLOCKS.GOLD] = this.createOreTexture('#eab308', '#fef08a');
+
+                // Planks
+                ({ c, ctx } = this.createCanvas());
+                ctx.fillStyle = '#a16207';
+                ctx.fillRect(0, 0, 16, 16);
+                ctx.fillStyle = '#713f12';
+                ctx.fillRect(0, 7, 16, 2); ctx.fillRect(0, 15, 16, 1);
+                ctx.fillRect(7, 0, 2, 7); ctx.fillRect(11, 9, 2, 6);
+                this.cache[BLOCKS.PLANKS] = c;
+
+                // Workbench
+                ({ c, ctx } = this.createCanvas());
+                ctx.fillStyle = '#854d0e';
+                ctx.fillRect(0, 0, 16, 16);
+                ctx.fillStyle = '#a16207';
+                ctx.fillRect(1, 1, 14, 4);
+                ctx.fillStyle = '#713f12';
+                ctx.fillRect(2, 5, 3, 11); ctx.fillRect(11, 5, 3, 11);
+                this.cache[BLOCKS.WORKBENCH] = c;
+
+                // Torch
+                ({ c, ctx } = this.createCanvas());
+                ctx.fillStyle = '#713f12';
+                ctx.fillRect(7, 6, 2, 10);
+                ctx.fillStyle = '#f59e0b';
+                ctx.fillRect(6, 3, 4, 4);
+                ctx.fillStyle = '#fef08a';
+                ctx.fillRect(7, 2, 2, 3);
+                this.cache[BLOCKS.TORCH] = c;
+
+                // Furnace
+                ({ c, ctx } = this.createCanvas());
+                ctx.fillStyle = '#475569';
+                ctx.fillRect(0, 0, 16, 16);
+                ctx.fillStyle = '#1e293b';
+                ctx.fillRect(2, 2, 12, 12);
+                ctx.fillStyle = '#f97316';
+                ctx.fillRect(4, 7, 8, 7);
+                ctx.fillStyle = '#fef08a';
+                ctx.fillRect(6, 9, 4, 3);
+                this.cache[BLOCKS.FURNACE] = c;
+
+                // Anvil
+                ({ c, ctx } = this.createCanvas());
+                ctx.fillStyle = '#334155';
+                ctx.fillRect(1, 4, 14, 4);
+                ctx.fillRect(4, 8, 8, 4);
+                ctx.fillRect(2, 12, 12, 4);
+                ctx.fillStyle = '#94a3b8';
+                ctx.fillRect(1, 4, 14, 1);
+                this.cache[BLOCKS.ANVIL] = c;
+
+                // Life Crystal
+                ({ c, ctx } = this.createCanvas());
+                ctx.fillStyle = '#f43f5e';
+                ctx.beginPath();
+                ctx.moveTo(8, 14);
+                ctx.bezierCurveTo(0, 8, 0, 2, 8, 5);
+                ctx.bezierCurveTo(16, 2, 16, 8, 8, 14);
+                ctx.fill();
+                ctx.fillStyle = '#fda4af';
+                ctx.fillRect(5, 4, 2, 2);
+                this.cache[BLOCKS.LIFE_CRYSTAL] = c;
+            }
+
+            createOreTexture(mainColor, shineColor) {
+                const { c, ctx } = this.createCanvas();
+                ctx.drawImage(this.cache[BLOCKS.STONE], 0, 0);
+                ctx.fillStyle = mainColor;
+                ctx.fillRect(3, 3, 4, 3); ctx.fillRect(9, 4, 4, 4); ctx.fillRect(4, 10, 5, 3);
+                ctx.fillStyle = shineColor;
+                ctx.fillRect(4, 3, 2, 1); ctx.fillRect(10, 4, 2, 1); ctx.fillRect(5, 10, 2, 1);
+                return c;
+            }
+        }
+
+        const textureAtlas = new TextureGenerator();
+
+        class SimplexNoise {
+            constructor() {
+                this.p = new Uint8Array(256);
+                for (let i = 0; i < 256; i++) this.p[i] = Math.floor(Math.random() * 256);
+                this.perm = new Uint8Array(512);
+                for (let i = 0; i < 512; i++) this.perm[i] = this.p[i & 255];
+            }
+
+            noise1D(x) {
+                const X = Math.floor(x) & 255;
+                x -= Math.floor(x);
+                const u = x * x * (3 - 2 * x);
+                return (1 - u) * (this.perm[X] / 255) + u * (this.perm[X + 1] / 255);
+            }
+
+            noise2D(x, y) {
+                const X = Math.floor(x) & 255;
+                const Y = Math.floor(y) & 255;
+                const fx = x - Math.floor(x);
+                const fy = y - Math.floor(y);
+                const u = fx * fx * (3 - 2 * fx);
+                const v = fy * fy * (3 - 2 * fy);
+                const n00 = this.perm[X + this.perm[Y]] / 255;
+                const n01 = this.perm[X + this.perm[Y + 1]] / 255;
+                const n10 = this.perm[X + 1 + this.perm[Y]] / 255;
+                const n11 = this.perm[X + 1 + this.perm[Y + 1]] / 255;
+                return (1 - v) * ((1 - u) * n00 + u * n10) + v * ((1 - u) * n01 + u * n11);
+            }
+        }
+
+        class World {
+            constructor(width, height) {
+                this.width = width;
+                this.height = height;
+                this.tiles = new Uint8Array(width * height);
+                this.noise = new SimplexNoise();
+                this.generateTerrain();
+            }
+
+            getTile(x, y) {
+                if (x < 0 || x >= this.width || y < 0 || y >= this.height) return BLOCKS.STONE;
+                return this.tiles[y * this.width + x];
+            }
+
+            setTile(x, y, type) {
+                if (x < 0 || x >= this.width || y < 0 || y >= this.height) return;
+                this.tiles[y * this.width + x] = type;
+            }
+
+            generateTerrain() {
+                const surfaceLine = 38;
+
+                for (let x = 0; x < this.width; x++) {
+                    const n = this.noise.noise1D(x * 0.04);
+                    const h = Math.floor(surfaceLine + n * 14);
+
+                    for (let y = 0; y < this.height; y++) {
+                        if (y < h) {
+                            this.setTile(x, y, BLOCKS.AIR);
+                        } else if (y === h) {
+                            this.setTile(x, y, BLOCKS.GRASS);
+                        } else if (y < h + 6) {
+                            this.setTile(x, y, BLOCKS.DIRT);
+                        } else {
+                            const caveNoise = this.noise.noise2D(x * 0.07, y * 0.07);
+                            if (caveNoise > 0.66) {
+                                this.setTile(x, y, BLOCKS.AIR);
+                            } else {
+                                const oreVal = Math.random();
+                                if (y > h + 30 && oreVal < 0.04) {
+                                    this.setTile(x, y, BLOCKS.GOLD);
+                                } else if (y > h + 12 && oreVal < 0.08) {
+                                    this.setTile(x, y, BLOCKS.IRON);
+                                } else if (oreVal < 0.12) {
+                                    this.setTile(x, y, BLOCKS.COAL);
+                                } else {
+                                    this.setTile(x, y, BLOCKS.STONE);
+                                }
+                            }
+                        }
+
+                        if (y > h + 15 && this.getTile(x, y) === BLOCKS.AIR && Math.random() < 0.012) {
+                            if (this.getTile(x, y + 1) !== BLOCKS.AIR) {
+                                this.setTile(x, y, BLOCKS.LIFE_CRYSTAL);
+                            }
+                        }
+                    }
+
+                    if (x > 5 && x < this.width - 5 && Math.random() < 0.12) {
+                        const treeHeight = 4 + Math.floor(Math.random() * 4);
+                        if (this.getTile(x, h) === BLOCKS.GRASS) {
+                            for (let th = 1; th <= treeHeight; th++) {
+                                this.setTile(x, h - th, BLOCKS.WOOD);
+                            }
+                            const leafTop = h - treeHeight;
+                            for (let lx = x - 2; lx <= x + 2; lx++) {
+                                for (let ly = leafTop - 2; ly <= leafTop; ly++) {
+                                    if (this.getTile(lx, ly) === BLOCKS.AIR) {
+                                        this.setTile(lx, ly, BLOCKS.LEAVES);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        class Particle {
+            constructor(x, y, color, vx, vy, size, life) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                this.vx = vx;
+                this.vy = vy;
+                this.size = size;
+                this.life = life;
+                this.maxLife = life;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vy += 0.12;
+                this.life--;
+            }
+
+            draw(ctx, camera) {
+                const alpha = Math.max(0, this.life / this.maxLife);
+                ctx.fillStyle = this.color;
+                ctx.globalAlpha = alpha;
+                ctx.fillRect(Math.floor(this.x - camera.x), Math.floor(this.y - camera.y), this.size, this.size);
+                ctx.globalAlpha = 1.0;
+            }
+        }
+
+        class FloatingText {
+            constructor(x, y, text, color) {
+                this.x = x;
+                this.y = y;
+                this.text = text;
+                this.color = color;
+                this.life = 55;
+            }
+
+            update() {
+                this.y -= 0.6;
+                this.life--;
+            }
+
+            draw(ctx, camera) {
+                ctx.fillStyle = this.color;
+                ctx.font = 'bold 12px sans-serif';
+                ctx.shadowColor = 'black';
+                ctx.shadowBlur = 4;
+                ctx.fillText(this.text, Math.floor(this.x - camera.x), Math.floor(this.y - camera.y));
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        class Arrow {
+            constructor(x, y, vx, vy, damage) {
+                this.x = x;
+                this.y = y;
+                this.vx = vx;
+                this.vy = vy;
+                this.damage = damage;
+                this.active = true;
+            }
+
+            update(world, enemies, particles, floatingTexts, audio) {
+                if (!this.active) return;
+
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vy += 0.15;
+
+                const tileX = Math.floor(this.x / TILE_SIZE);
+                const tileY = Math.floor(this.y / TILE_SIZE);
+
+                if (BLOCK_DATA[world.getTile(tileX, tileY)]?.solid) {
+                    this.active = false;
+                    for (let i = 0; i < 3; i++) {
+                        particles.push(new Particle(this.x, this.y, '#a16207', (Math.random() - 0.5) * 2, -Math.random() * 2, 2, 10));
+                    }
+                    return;
+                }
+
+                for (let enemy of enemies) {
+                    if (this.x >= enemy.x && this.x <= enemy.x + enemy.width &&
+                        this.y >= enemy.y && this.y <= enemy.y + enemy.height) {
+                        
+                        enemy.hp -= this.damage;
+                        enemy.vx += this.vx * 0.2;
+                        enemy.vy -= 2;
+                        floatingTexts.push(new FloatingText(enemy.x, enemy.y, `-${this.damage}`, '#f59e0b'));
+                        audio.playHurt();
+                        this.active = false;
+
+                        for (let i = 0; i < 5; i++) {
+                            particles.push(new Particle(this.x, this.y, '#ef4444', (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3, 2, 15));
+                        }
+                        break;
+                    }
+                }
+            }
+
+            draw(ctx, camera) {
+                if (!this.active) return;
+                const sx = Math.floor(this.x - camera.x);
+                const sy = Math.floor(this.y - camera.y);
+                const angle = Math.atan2(this.vy, this.vx);
+
+                ctx.save();
+                ctx.translate(sx, sy);
+                ctx.rotate(angle);
+                ctx.fillStyle = '#a16207';
+                ctx.fillRect(-6, -1, 12, 2);
+                ctx.fillStyle = '#cbd5e1';
+                ctx.fillRect(4, -2, 3, 4);
+                ctx.restore();
+            }
+        }
+
+        class Player {
+            constructor(x, y) {
+                this.spawnX = x;
+                this.spawnY = y;
+                this.x = x;
+                this.y = y;
+                this.width = 14;
+                this.height = 26;
+                this.vx = 0;
+                this.vy = 0;
+                this.speed = 2.5;
+                this.jumpForce = -7.3;
+                this.grounded = false;
+                this.facing = 1;
+
+                this.hp = 100;
+                this.maxHp = 100;
+                this.isDead = false;
+                this.invincibleTimer = 0;
+                this.walkCycle = 0;
+
+                this.armor = null;
+
+                // Expand inventory to 20 slots for full backpack support
+                this.inventory = [
+                    { id: ITEMS.COPPER_SWORD, count: 1, type: 'weapon' },
+                    { id: ITEMS.COPPER_PICKAXE, count: 1, type: 'tool' },
+                    { id: ITEMS.COPPER_AXE, count: 1, type: 'tool' },
+                    { id: BLOCKS.TORCH, count: 8, type: 'block' },
+                    { id: ITEMS.BOW, count: 1, type: 'weapon' },
+                    { id: ITEMS.ARROW, count: 30, type: 'ammo' },
+                    null, null, null, null,
+                    null, null, null, null, null,
+                    null, null, null, null, null
+                ];
+                this.selectedSlot = 0;
+
+                this.swinging = false;
+                this.swingAngle = 0;
+            }
+
+            getDefense() {
+                if (this.armor === ITEMS.IRON_ARMOR) return 8;
+                if (this.armor === ITEMS.GOLD_ARMOR) return 16;
+                return 0;
+            }
+
+            takeDamage(amount, reason = "Вас здолали небезпеки цього світу...") {
+                if (this.invincibleTimer > 0 || this.isDead) return false;
+                const actualDamage = Math.max(1, amount - this.getDefense());
+                this.hp = Math.max(0, this.hp - actualDamage);
+                this.invincibleTimer = 90;
+                audio.playHurt();
+
+                if (this.hp <= 0) {
+                    this.die(reason);
+                }
+                return true;
+            }
+
+            die(reason) {
+                this.isDead = true;
+                this.hp = 0;
+                document.getElementById('deathReasonText').innerText = reason;
+                document.getElementById('deathScreen').classList.remove('hidden');
+            }
+
+            respawn() {
+                this.x = this.spawnX;
+                this.y = this.spawnY;
+                this.vx = 0;
+                this.vy = 0;
+                this.hp = this.maxHp;
+                this.isDead = false;
+                this.invincibleTimer = 120;
+                document.getElementById('deathScreen').classList.add('hidden');
+            }
+
+            update(keys, world, particles) {
+                if (this.isDead) return;
+
+                if (this.invincibleTimer > 0) this.invincibleTimer--;
+
+                const moveLeft = keys['KeyA'] || keys['ArrowLeft'];
+                const moveRight = keys['KeyD'] || keys['ArrowRight'];
+
+                if (moveLeft && !moveRight) {
+                    this.vx = -this.speed;
+                    this.facing = -1;
+                    if (this.grounded) this.walkCycle += 0.25;
+                } else if (moveRight && !moveLeft) {
+                    this.vx = this.speed;
+                    this.facing = 1;
+                    if (this.grounded) this.walkCycle += 0.25;
+                } else {
+                    this.vx *= 0.65;
+                    if (Math.abs(this.vx) < 0.05) this.vx = 0;
+                    this.walkCycle = 0;
+                }
+
+                const jumpKey = keys['Space'] || keys['KeyW'] || keys['ArrowUp'];
+                if (jumpKey && this.grounded) {
+                    this.vy = this.jumpForce;
+                    this.grounded = false;
+                    audio.playJump();
+
+                    for (let i = 0; i < 4; i++) {
+                        particles.push(new Particle(
+                            this.x + this.width / 2, this.y + this.height,
+                            '#d1d5db', (Math.random() - 0.5) * 2, -Math.random() * 1.5, 2, 15
+                        ));
+                    }
+                }
+
+                this.vy += GRAVITY;
+                if (this.vy > 10) this.vy = 10;
+
+                this.x += this.vx;
+                this.resolveCollision(world, true);
+
+                this.y += this.vy;
+                this.grounded = false;
+                this.resolveCollision(world, false);
+
+                if (this.swinging) {
+                    this.swingAngle += 0.3;
+                    if (this.swingAngle >= Math.PI) {
+                        this.swinging = false;
+                        this.swingAngle = 0;
+                    }
+                }
+            }
+
+            resolveCollision(world, isHorizontal) {
+                const margin = 0.01;
+                const startTileX = Math.floor(this.x / TILE_SIZE);
+                const endTileX = Math.floor((this.x + this.width - margin) / TILE_SIZE);
+                const startTileY = Math.floor(this.y / TILE_SIZE);
+                const endTileY = Math.floor((this.y + this.height - margin) / TILE_SIZE);
+
+                for (let tx = startTileX; tx <= endTileX; tx++) {
+                    for (let ty = startTileY; ty <= endTileY; ty++) {
+                        const tile = world.getTile(tx, ty);
+                        if (BLOCK_DATA[tile] && BLOCK_DATA[tile].solid) {
+                            if (isHorizontal) {
+                                if (this.vx > 0) this.x = tx * TILE_SIZE - this.width - margin;
+                                else if (this.vx < 0) this.x = (tx + 1) * TILE_SIZE + margin;
+                                this.vx = 0;
+                                return;
+                            } else {
+                                if (this.vy > 0) {
+                                    this.y = ty * TILE_SIZE - this.height - margin;
+                                    this.grounded = true;
+                                    this.vy = 0;
+                                } else if (this.vy < 0) {
+                                    this.y = (ty + 1) * TILE_SIZE + margin;
+                                    this.vy = 0;
+                                }
+                                return;
+                            }
+                        }
+                    }
+                }
+            }
+
+            draw(ctx, camera) {
+                if (this.isDead) return;
+                if (this.invincibleTimer > 0 && Math.floor(this.invincibleTimer / 4) % 2 === 0) return;
+
+                const sx = Math.floor(this.x - camera.x);
+                const sy = Math.floor(this.y - camera.y);
+                const legOffset = Math.sin(this.walkCycle) * 3;
+
+                // Legs
+                ctx.fillStyle = '#1e293b';
+                ctx.fillRect(sx + 2, sy + 18, 4, 8 + (this.grounded ? legOffset : 0));
+                ctx.fillRect(sx + 8, sy + 18, 4, 8 - (this.grounded ? legOffset : 0));
+
+                // Armor / Clothes
+                let bodyColor = '#2563eb';
+                let helmetColor = '#78350f';
+                if (this.armor === ITEMS.IRON_ARMOR) {
+                    bodyColor = '#94a3b8';
+                    helmetColor = '#cbd5e1';
+                } else if (this.armor === ITEMS.GOLD_ARMOR) {
+                    bodyColor = '#eab308';
+                    helmetColor = '#fef08a';
+                }
+
+                ctx.fillStyle = bodyColor;
+                ctx.fillRect(sx + 1, sy + 9, 12, 10);
+
+                // Head & Skin
+                ctx.fillStyle = '#fca5a5';
+                ctx.fillRect(sx + 2, sy, 10, 9);
+
+                // Hair / Helmet
+                ctx.fillStyle = helmetColor;
+                ctx.fillRect(sx + 1, sy - 2, 12, 4);
+
+                // Eyes
+                ctx.fillStyle = '#0f172a';
+                const eyeX = this.facing === 1 ? sx + 8 : sx + 4;
+                ctx.fillRect(eyeX, sy + 3, 2, 2);
+
+                // Held Item Rendering
+                const item = this.inventory[this.selectedSlot];
+                if (item) {
+                    ctx.save();
+                    ctx.translate(sx + this.width / 2, sy + 12);
+                    const baseAngle = this.facing === 1 ? -Math.PI / 4 : Math.PI / 4;
+                    const swing = this.facing * (this.swinging ? this.swingAngle : 0);
+                    ctx.rotate(baseAngle + swing);
+
+                    if (item.id === ITEMS.SLIME_SWORD) {
+                        ctx.fillStyle = '#10b981'; ctx.fillRect(0, -14, 3, 16);
+                    } else if (item.id === ITEMS.COPPER_SWORD) {
+                        ctx.fillStyle = '#b45309'; ctx.fillRect(0, -13, 3, 15);
+                    } else if (item.id === ITEMS.COPPER_PICKAXE) {
+                        ctx.fillStyle = '#78350f'; ctx.fillRect(0, -11, 3, 14);
+                        ctx.fillStyle = '#b45309'; ctx.fillRect(-5, -13, 13, 4);
+                    } else if (item.id === ITEMS.COPPER_AXE) {
+                        ctx.fillStyle = '#78350f'; ctx.fillRect(0, -11, 3, 14);
+                        ctx.fillStyle = '#b45309'; ctx.fillRect(2, -12, 7, 7);
+                    } else if (item.id === ITEMS.IRON_SWORD) {
+                        ctx.fillStyle = '#cbd5e1'; ctx.fillRect(0, -15, 3, 17);
+                    } else if (item.id === ITEMS.IRON_PICKAXE) {
+                        ctx.fillStyle = '#78350f'; ctx.fillRect(0, -11, 3, 14);
+                        ctx.fillStyle = '#cbd5e1'; ctx.fillRect(-5, -13, 13, 4);
+                    } else if (item.id === ITEMS.IRON_AXE) {
+                        ctx.fillStyle = '#78350f'; ctx.fillRect(0, -11, 3, 14);
+                        ctx.fillStyle = '#cbd5e1'; ctx.fillRect(2, -12, 7, 7);
+                    } else if (item.id === ITEMS.GOLD_SWORD) {
+                        ctx.fillStyle = '#fef08a'; ctx.fillRect(0, -15, 3, 17);
+                    } else if (item.id === ITEMS.GOLD_PICKAXE) {
+                        ctx.fillStyle = '#78350f'; ctx.fillRect(0, -11, 3, 14);
+                        ctx.fillStyle = '#eab308'; ctx.fillRect(-5, -13, 13, 4);
+                    } else if (item.id === ITEMS.GOLD_AXE) {
+                        ctx.fillStyle = '#78350f'; ctx.fillRect(0, -11, 3, 14);
+                        ctx.fillStyle = '#eab308'; ctx.fillRect(2, -12, 7, 7);
+                    } else if (item.id === ITEMS.BOW) {
+                        ctx.fillStyle = '#a16207';
+                        ctx.beginPath(); ctx.arc(0, 0, 8, -Math.PI / 2, Math.PI / 2); ctx.stroke();
+                    } else if (typeof item.id === 'number' && textureAtlas.cache[item.id]) {
+                        ctx.drawImage(textureAtlas.cache[item.id], -5, -5, 10, 10);
+                    }
+                    ctx.restore();
+                }
+            }
+        }
+
+        class Enemy {
+            constructor(x, y, type) {
+                this.x = x;
+                this.y = y;
+                this.type = type; // 'slime', 'zombie', 'skeleton', 'boss'
+                this.isBoss = type === 'boss';
+
+                this.width = this.isBoss ? 56 : (type === 'slime' ? 16 : 14);
+                this.height = this.isBoss ? 56 : (type === 'slime' ? 12 : 26);
+
+                this.vx = 0;
+                this.vy = 0;
+
+                // Scaled Eye of Cthulhu HP to 500 for better balance
+                this.maxHp = this.isBoss ? 500 : (type === 'skeleton' ? 50 : (type === 'zombie' ? 35 : 20));
+                this.hp = this.maxHp;
+                this.damage = this.isBoss ? 20 : (type === 'skeleton' ? 16 : (type === 'zombie' ? 12 : 8));
+                this.color = type === 'slime' ? '#22c55e' : (type === 'zombie' ? '#15803d' : '#e2e8f0');
+
+                this.grounded = false;
+                this.phase = 1;
+                this.bossTimer = 0;
+            }
+
+            update(world, player, particles, audio) {
+                const dx = (player.x + player.width / 2) - (this.x + this.width / 2);
+                const dy = (player.y + player.height / 2) - (this.y + this.height / 2);
+                const dist = Math.hypot(dx, dy);
+
+                if (this.isBoss) {
+                    this.bossTimer++;
+
+                    if (this.hp < this.maxHp * 0.5 && this.phase === 1) {
+                        this.phase = 2;
+                        this.damage = 28;
+                        audio.playBossRoar();
+                        for (let i = 0; i < 20; i++) {
+                            particles.push(new Particle(this.x + 28, this.y + 28, '#ef4444', (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6, 4, 30));
+                        }
+                    }
+
+                    if (this.bossTimer % 180 < 120) {
+                        const targetX = player.x + (Math.sin(this.bossTimer * 0.05) * 120);
+                        const targetY = player.y - 140;
+                        this.vx += ((targetX - this.x) * 0.02 - this.vx) * 0.1;
+                        this.vy += ((targetY - this.y) * 0.02 - this.vy) * 0.1;
+                    } else if (this.bossTimer % 180 === 120) {
+                        if (dist > 0) {
+                            this.vx = (dx / dist) * (this.phase === 1 ? 6 : 9);
+                            this.vy = (dy / dist) * (this.phase === 1 ? 6 : 9);
+                            audio.playBossRoar();
+                        }
+                    }
+
+                    this.x += this.vx;
+                    this.y += this.vy;
+                    this.vx *= 0.98;
+                    this.vy *= 0.98;
+
+                    if (Math.random() < 0.3) {
+                        particles.push(new Particle(this.x + 28, this.y + 28, '#ef4444', (Math.random() - 0.5) * 2, (Math.random() - 0.5) * 2, 3, 15));
+                    }
+                } else {
+                    this.vx = Math.sign(dx) * (this.type === 'slime' ? 0.8 : 1.2);
+
+                    if (this.type === 'slime' && this.grounded && Math.random() < 0.02) {
+                        this.vy = -4.8;
+                    }
+
+                    if ((this.type === 'zombie' || this.type === 'skeleton') && this.grounded && Math.abs(dx) > 10) {
+                        const frontTileX = Math.floor((this.x + (this.vx > 0 ? this.width + 2 : -2)) / TILE_SIZE);
+                        const feetTileY = Math.floor((this.y + this.height - 2) / TILE_SIZE);
+                        if (BLOCK_DATA[world.getTile(frontTileX, feetTileY)]?.solid) {
+                            this.vy = -6;
+                        }
+                    }
+
+                    this.vy += GRAVITY;
+
+                    this.x += this.vx;
+                    this.resolveCollision(world, true);
+                    this.y += this.vy;
+                    this.grounded = false;
+                    this.resolveCollision(world, false);
+                }
+            }
+
+            resolveCollision(world, isHorizontal) {
+                const margin = 0.01;
+                const startTileX = Math.floor(this.x / TILE_SIZE);
+                const endTileX = Math.floor((this.x + this.width - margin) / TILE_SIZE);
+                const startTileY = Math.floor(this.y / TILE_SIZE);
+                const endTileY = Math.floor((this.y + this.height - margin) / TILE_SIZE);
+
+                for (let tx = startTileX; tx <= endTileX; tx++) {
+                    for (let ty = startTileY; ty <= endTileY; ty++) {
+                        if (BLOCK_DATA[world.getTile(tx, ty)]?.solid) {
+                            if (isHorizontal) {
+                                if (this.vx > 0) this.x = tx * TILE_SIZE - this.width - margin;
+                                else if (this.vx < 0) this.x = (tx + 1) * TILE_SIZE + margin;
+                                this.vx = 0;
+                                return;
+                            } else {
+                                if (this.vy > 0) {
+                                    this.y = ty * TILE_SIZE - this.height - margin;
+                                    this.grounded = true;
+                                    this.vy = 0;
+                                } else if (this.vy < 0) {
+                                    this.y = (ty + 1) * TILE_SIZE + margin;
+                                    this.vy = 0;
+                                }
+                                return;
+                            }
+                        }
+                    }
+                }
+            }
+
+            draw(ctx, camera) {
+                const sx = Math.floor(this.x - camera.x);
+                const sy = Math.floor(this.y - camera.y);
+
+                if (this.isBoss) {
+                    ctx.save();
+                    ctx.translate(sx + 28, sy + 28);
+
+                    ctx.fillStyle = '#f8fafc';
+                    ctx.beginPath(); ctx.arc(0, 0, 26, 0, Math.PI * 2); ctx.fill();
+
+                    ctx.strokeStyle = '#ef4444';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(-20, -10); ctx.lineTo(-10, -5);
+                    ctx.moveTo(20, 10); ctx.lineTo(10, 5);
+                    ctx.moveTo(-15, 15); ctx.lineTo(-8, 6);
+                    ctx.stroke();
+
+                    if (this.phase === 1) {
+                        ctx.fillStyle = '#3b82f6';
+                        ctx.beginPath(); ctx.arc(0, 0, 12, 0, Math.PI * 2); ctx.fill();
+                        ctx.fillStyle = '#0f172a';
+                        ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI * 2); ctx.fill();
+                    } else {
+                        ctx.fillStyle = '#7f1d1d';
+                        ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); ctx.fill();
+                        ctx.fillStyle = '#f8fafc';
+                        ctx.beginPath();
+                        ctx.moveTo(-10, -5); ctx.lineTo(-5, 5); ctx.lineTo(0, -5);
+                        ctx.lineTo(5, 5); ctx.lineTo(10, -5); ctx.fill();
+                    }
+                    ctx.restore();
+                } else {
+                    ctx.fillStyle = this.color;
+                    ctx.fillRect(sx, sy, this.width, this.height);
+
+                    if (this.type === 'skeleton') {
+                        ctx.fillStyle = '#0f172a';
+                        ctx.fillRect(sx + 3, sy + 4, 3, 3); ctx.fillRect(sx + 8, sy + 4, 3, 3);
+                    }
+
+                    if (this.hp < this.maxHp) {
+                        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+                        ctx.fillRect(sx, sy - 6, this.width, 3);
+                        ctx.fillStyle = '#ef4444';
+                        ctx.fillRect(sx, sy - 6, (this.hp / this.maxHp) * this.width, 3);
+                    }
+                }
+            }
+        }
+
+        const RECIPES_PAGE_1 = [
+            // Page 1: Basic Crafting / Базовий крафт
+            {
+                result: { id: BLOCKS.TORCH, count: 4, type: 'block' },
+                ingredients: [{ id: BLOCKS.WOOD, count: 1 }, { id: ITEMS.GEL, count: 1 }],
+                station: 'none', name: 'Смолоскип (x4)'
+            },
+            {
+                result: { id: BLOCKS.PLANKS, count: 4, type: 'block' },
+                ingredients: [{ id: BLOCKS.WOOD, count: 1 }],
+                station: 'none', name: 'Дерев’яні Дошки (x4)'
+            },
+            {
+                result: { id: BLOCKS.WORKBENCH, count: 1, type: 'block' },
+                ingredients: [{ id: BLOCKS.WOOD, count: 10 }],
+                station: 'none', name: 'Верстак'
+            },
+            {
+                result: { id: BLOCKS.FURNACE, count: 1, type: 'block' },
+                ingredients: [{ id: BLOCKS.STONE, count: 10 }, { id: BLOCKS.WOOD, count: 4 }],
+                station: 'none', name: 'Піч'
+            },
+            {
+                result: { id: BLOCKS.ANVIL, count: 1, type: 'block' },
+                ingredients: [{ id: ITEMS.IRON_BAR, count: 4 }],
+                station: 'none', name: 'Ковальня'
+            },
+            {
+                result: { id: ITEMS.BOW, count: 1, type: 'weapon' },
+                ingredients: [{ id: BLOCKS.WOOD, count: 8 }],
+                station: 'none', name: 'Дерев’яний Лук'
+            },
+            {
+                result: { id: ITEMS.ARROW, count: 15, type: 'ammo' },
+                ingredients: [{ id: BLOCKS.WOOD, count: 2 }, { id: BLOCKS.STONE, count: 2 }],
+                station: 'none', name: 'Стріли (x15)'
+            },
+            {
+                result: { id: ITEMS.BOSS_SUMMON, count: 1, type: 'summon' },
+                ingredients: [{ id: BLOCKS.WOOD, count: 5 }, { id: ITEMS.GEL, count: 5 }],
+                station: 'none', name: 'Підозріле Око (Призивалка Ока Ктулху)'
+            }
+        ];
+
+        const RECIPES_PAGE_2 = [
+            // Page 2: Equipment & Gear / Зброя та Інструменти
+            {
+                result: { id: ITEMS.IRON_SWORD, count: 1, type: 'weapon' },
+                ingredients: [{ id: ITEMS.IRON_BAR, count: 5 }],
+                station: 'anvil', name: 'Залізний Меч (20 Атака)'
+            },
+            {
+                result: { id: ITEMS.IRON_PICKAXE, count: 1, type: 'tool' },
+                ingredients: [{ id: ITEMS.IRON_BAR, count: 6 }],
+                station: 'anvil', name: 'Залізна Кирка'
+            },
+            {
+                result: { id: ITEMS.IRON_AXE, count: 1, type: 'tool' },
+                ingredients: [{ id: ITEMS.IRON_BAR, count: 5 }],
+                station: 'anvil', name: 'Залізна Сокира'
+            },
+            {
+                result: { id: ITEMS.IRON_ARMOR, count: 1, type: 'armor' },
+                ingredients: [{ id: ITEMS.IRON_BAR, count: 10 }],
+                station: 'anvil', name: 'Залізна Броня (+8 Захисту)'
+            },
+            {
+                result: { id: ITEMS.GOLD_SWORD, count: 1, type: 'weapon' },
+                ingredients: [{ id: ITEMS.GOLD_BAR, count: 6 }],
+                station: 'anvil', name: 'Золотий Меч (32 Атака)'
+            },
+            {
+                result: { id: ITEMS.GOLD_PICKAXE, count: 1, type: 'tool' },
+                ingredients: [{ id: ITEMS.GOLD_BAR, count: 8 }],
+                station: 'anvil', name: 'Золота Кирка'
+            },
+            {
+                result: { id: ITEMS.GOLD_AXE, count: 1, type: 'tool' },
+                ingredients: [{ id: ITEMS.GOLD_BAR, count: 6 }],
+                station: 'anvil', name: 'Золота Сокира'
+            },
+            {
+                result: { id: ITEMS.GOLD_ARMOR, count: 1, type: 'armor' },
+                ingredients: [{ id: ITEMS.GOLD_BAR, count: 12 }],
+                station: 'anvil', name: 'Золота Броня (+16 Захисту)'
+            }
+        ];
+
+        const RECIPES_PAGE_3 = [
+            // Page 3: Smelting & Resources / Переплавка
+            {
+                result: { id: ITEMS.IRON_BAR, count: 1, type: 'bar' },
+                ingredients: [{ id: BLOCKS.IRON, count: 3 }],
+                station: 'furnace', name: 'Залізний Злиток'
+            },
+            {
+                result: { id: ITEMS.GOLD_BAR, count: 1, type: 'bar' },
+                ingredients: [{ id: BLOCKS.GOLD, count: 3 }],
+                station: 'furnace', name: 'Золотий Злиток'
+            }
+        ];
+
+        class Game {
+            constructor() {
+                this.canvas = document.getElementById('gameCanvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.resizeCanvas();
+
+                this.world = new World(WORLD_WIDTH, WORLD_HEIGHT);
+                this.player = new Player(WORLD_WIDTH * TILE_SIZE / 2, 20 * TILE_SIZE);
+                this.camera = { x: 0, y: 0 };
+
+                this.particles = [];
+                this.floatingTexts = [];
+                this.arrows = [];
+                this.enemies = [];
+
+                this.keys = {};
+                this.mouse = { x: 0, y: 0, worldX: 0, worldY: 0, downLeft: false, downRight: false };
+
+                this.gameTime = 0.35;
+                this.miningProgress = 0;
+                this.miningTarget = null;
+
+                this.currentCraftingPage = 1; // 1, 2, or 3
+                this.selectedRecipeIndex = 0;
+                this.bossSpawnedNaturally = false;
+
+                this.setupInputs();
+                this.setupUI();
+                this.spawnEnemiesLoop();
+
+                window.addEventListener('resize', () => this.resizeCanvas());
+            }
+
+            resizeCanvas() {
+                this.canvas.width = window.innerWidth;
+                this.canvas.height = window.innerHeight;
+            }
+
+            setupInputs() {
+                window.addEventListener('keydown', (e) => {
+                    this.keys[e.code] = true;
+                    this.keys[e.key] = true;
+                    audio.init();
+
+                    if (e.key >= '1' && e.key <= '9') {
+                        this.player.selectedSlot = parseInt(e.key) - 1;
+                        this.updateHotbarUI();
+                    }
+
+                    // Key 'F' -> Opens dedicated Inventory & Equipment modal
+                    if (e.code === 'KeyF' || e.key === 'f' || e.key === 'F') {
+                        this.toggleInventoryMenu();
+                    }
+
+                    // Key 'E' -> Opens Crafting Menu
+                    if (e.code === 'KeyE' || e.key === 'e' || e.key === 'E') {
+                        this.toggleCraftingMenu();
+                    }
+
+                    // ESC key -> Closes any open modal
+                    if (e.key === 'Escape') {
+                        document.getElementById('inventoryMenu').classList.add('hidden');
+                        document.getElementById('craftingMenu').classList.add('hidden');
+                    }
+                });
+
+                window.addEventListener('keyup', (e) => {
+                    this.keys[e.code] = false;
+                    this.keys[e.key] = false;
+                });
+
+                window.addEventListener('wheel', (e) => {
+                    if (e.deltaY > 0) {
+                        this.player.selectedSlot = (this.player.selectedSlot + 1) % 9;
+                    } else {
+                        this.player.selectedSlot = (this.player.selectedSlot - 1 + 9) % 9;
+                    }
+                    this.updateHotbarUI();
+                });
+
+                window.addEventListener('mousemove', (e) => {
+                    this.mouse.x = e.clientX;
+                    this.mouse.y = e.clientY;
+                });
+
+                this.canvas.addEventListener('mousedown', (e) => {
+                    audio.init();
+                    if (e.button === 0) this.mouse.downLeft = true;
+                    if (e.button === 2) this.mouse.downRight = true;
+                    this.handleMouseClick(e.button);
+                });
+
+                window.addEventListener('mouseup', (e) => {
+                    if (e.button === 0) {
+                        this.mouse.downLeft = false;
+                        this.miningProgress = 0;
+                        this.miningTarget = null;
+                    }
+                    if (e.button === 2) this.mouse.downRight = false;
+                });
+
+                this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+            }
+
+            handleMouseClick(button) {
+                if (this.player.isDead) return;
+                const currentItem = this.player.inventory[this.player.selectedSlot];
+
+                if (button === 0) { // Left Click: Attack / Swing / Bow Firing
+                    if (currentItem?.id === ITEMS.BOW) {
+                        let arrowItem = this.player.inventory.find(i => i && i.id === ITEMS.ARROW);
+                        if (arrowItem && arrowItem.count > 0) {
+                            arrowItem.count--;
+                            if (arrowItem.count <= 0) {
+                                const idx = this.player.inventory.indexOf(arrowItem);
+                                this.player.inventory[idx] = null;
+                            }
+                            this.updateHotbarUI();
+
+                            const dx = this.mouse.worldX - (this.player.x + this.player.width / 2);
+                            const dy = this.mouse.worldY - (this.player.y + this.player.height / 2);
+                            const dist = Math.hypot(dx, dy);
+                            if (dist > 0) {
+                                const speed = 10;
+                                this.arrows.push(new Arrow(
+                                    this.player.x + this.player.width / 2,
+                                    this.player.y + this.player.height / 2,
+                                    (dx / dist) * speed,
+                                    (dy / dist) * speed,
+                                    18
+                                ));
+                                audio.playShoot();
+                            }
+                        }
+                    } else {
+                        this.player.swinging = true;
+                        this.player.swingAngle = 0;
+
+                        let hit = false;
+                        for (let enemy of this.enemies) {
+                            const ex = enemy.x + enemy.width / 2;
+                            const ey = enemy.y + enemy.height / 2;
+                            const dist = Math.hypot(ex - (this.player.x + this.player.width / 2), ey - (this.player.y + this.player.height / 2));
+
+                            if (dist < 52) {
+                                let dmg = 8;
+                                if (currentItem?.id === ITEMS.SLIME_SWORD) dmg = 16;
+                                if (currentItem?.id === ITEMS.COPPER_SWORD) dmg = 12;
+                                if (currentItem?.id === ITEMS.IRON_SWORD) dmg = 20;
+                                if (currentItem?.id === ITEMS.GOLD_SWORD) dmg = 32;
+
+                                enemy.hp -= dmg;
+                                enemy.vx = this.player.facing * (enemy.isBoss ? 2 : 4);
+                                enemy.vy = -2.5;
+                                this.floatingTexts.push(new FloatingText(enemy.x, enemy.y, `-${dmg}`, '#ef4444'));
+
+                                for (let i = 0; i < 5; i++) {
+                                    this.particles.push(new Particle(
+                                        enemy.x + enemy.width / 2, enemy.y + enemy.height / 2,
+                                        enemy.color, (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3, 2, 18
+                                    ));
+                                }
+
+                                audio.playHurt();
+                                hit = true;
+                            }
+                        }
+                        if (!hit) audio.playSwing();
+                    }
+                }
+
+                if (button === 2) { // Right Click: Place blocks / Consumables / Armor / Boss Summon
+                    if (currentItem) {
+                        if (currentItem.id === ITEMS.LIFE_CRYSTAL_ITEM) {
+                            this.player.maxHp += 20;
+                            this.player.hp += 20;
+                            this.floatingTexts.push(new FloatingText(this.player.x, this.player.y, '+20 МАКС. HP!', '#f43f5e'));
+                            audio.playPowerup();
+                            currentItem.count--;
+                            if (currentItem.count <= 0) this.player.inventory[this.player.selectedSlot] = null;
+                            this.updateHotbarUI();
+                        } else if (currentItem.id === ITEMS.BOSS_SUMMON) {
+                            const isNight = this.gameTime < 0.2 || this.gameTime > 0.8;
+                            if (isNight) {
+                                this.spawnBoss();
+                                currentItem.count--;
+                                if (currentItem.count <= 0) this.player.inventory[this.player.selectedSlot] = null;
+                                this.updateHotbarUI();
+                            } else {
+                                this.floatingTexts.push(new FloatingText(this.player.x, this.player.y, 'Можна викликати тільки вночі!', '#cbd5e1'));
+                            }
+                        } else if (currentItem.type === 'armor') {
+                            const oldArmor = this.player.armor;
+                            this.player.armor = currentItem.id;
+                            this.floatingTexts.push(new FloatingText(this.player.x, this.player.y, 'Одягнено Броню!', '#eab308'));
+                            audio.playPlace();
+                            if (oldArmor) {
+                                currentItem.id = oldArmor;
+                            } else {
+                                this.player.inventory[this.player.selectedSlot] = null;
+                            }
+                            this.updateHotbarUI();
+                        } else if (typeof currentItem.id === 'number') {
+                            const tileX = Math.floor(this.mouse.worldX / TILE_SIZE);
+                            const tileY = Math.floor(this.mouse.worldY / TILE_SIZE);
+                            const tile = this.world.getTile(tileX, tileY);
+
+                            if (tile === BLOCKS.AIR || tile === BLOCKS.LEAVES) {
+                                const dist = Math.hypot(tileX * TILE_SIZE - this.player.x, tileY * TILE_SIZE - this.player.y);
+                                if (dist < 140) {
+                                    this.world.setTile(tileX, tileY, currentItem.id);
+                                    audio.playPlace();
+                                    currentItem.count--;
+                                    if (currentItem.count <= 0) this.player.inventory[this.player.selectedSlot] = null;
+                                    this.updateHotbarUI();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            handleMining() {
+                if (this.player.isDead || !this.mouse.downLeft) return;
+
+                const tileX = Math.floor(this.mouse.worldX / TILE_SIZE);
+                const tileY = Math.floor(this.mouse.worldY / TILE_SIZE);
+                const tile = this.world.getTile(tileX, tileY);
+
+                if (tile === BLOCKS.AIR) return;
+
+                const dist = Math.hypot(tileX * TILE_SIZE - this.player.x, tileY * TILE_SIZE - this.player.y);
+                if (dist > 140) return;
+
+                const currentItem = this.player.inventory[this.player.selectedSlot];
+                const targetData = BLOCK_DATA[tile];
+
+                let power = 0.8;
+                if (targetData?.toolType === 'pickaxe') {
+                    if (currentItem?.id === ITEMS.COPPER_PICKAXE) power = 1.6;
+                    if (currentItem?.id === ITEMS.IRON_PICKAXE) power = 2.8;
+                    if (currentItem?.id === ITEMS.GOLD_PICKAXE) power = 4.2;
+                } else if (targetData?.toolType === 'axe') {
+                    if (currentItem?.id === ITEMS.COPPER_AXE) power = 2.0;
+                    if (currentItem?.id === ITEMS.IRON_AXE) power = 3.2;
+                    if (currentItem?.id === ITEMS.GOLD_AXE) power = 4.8;
+                }
+
+                if (!this.miningTarget || this.miningTarget.x !== tileX || this.miningTarget.y !== tileY) {
+                    this.miningTarget = { x: tileX, y: tileY };
+                    this.miningProgress = 0;
+                }
+
+                this.miningProgress += power;
+                if (Math.random() < 0.25) audio.playMine();
+
+                const requiredHardness = targetData?.hardness || 40;
+                if (this.miningProgress >= requiredHardness) {
+                    const dropItem = targetData?.drop;
+                    if (dropItem) {
+                        this.addItemToInventory(dropItem, 1);
+                    }
+                    this.world.setTile(tileX, tileY, BLOCKS.AIR);
+                    this.miningProgress = 0;
+                    this.miningTarget = null;
+                }
+            }
+
+            addItemToInventory(itemId, count) {
+                for (let item of this.player.inventory) {
+                    if (item && item.id === itemId) {
+                        item.count += count;
+                        this.updateHotbarUI();
+                        return;
+                    }
+                }
+                for (let i = 0; i < this.player.inventory.length; i++) {
+                    if (!this.player.inventory[i]) {
+                        const isBlock = typeof itemId === 'number';
+                        this.player.inventory[i] = { id: itemId, count: count, type: isBlock ? 'block' : 'item' };
+                        this.updateHotbarUI();
+                        return;
+                    }
+                }
+            }
+
+            spawnBoss() {
+                if (this.enemies.some(e => e.isBoss)) return;
+                const boss = new Enemy(this.player.x + 200, this.player.y - 250, 'boss');
+                this.enemies.push(boss);
+                this.floatingTexts.push(new FloatingText(this.player.x, this.player.y, 'ОКО КТУЛХУ ПРОБУДИЛОСЯ!', '#ef4444'));
+                audio.playBossRoar();
+            }
+
+            spawnEnemiesLoop() {
+                setInterval(() => {
+                    if (this.enemies.length < 6 && !this.player.isDead) {
+                        const isNight = this.gameTime < 0.2 || this.gameTime > 0.8;
+                        const spawnX = this.player.x + (Math.random() < 0.5 ? -380 : 380);
+                        const spawnY = this.player.y - 20;
+
+                        if (spawnX > 0 && spawnX < WORLD_WIDTH * TILE_SIZE) {
+                            let enemyType = 'slime';
+                            if (isNight) {
+                                // Natural boss spawn check at night
+                                if (!this.bossSpawnedNaturally && Math.random() < 0.15 && !this.enemies.some(e => e.isBoss)) {
+                                    this.spawnBoss();
+                                    this.bossSpawnedNaturally = true;
+                                    return;
+                                }
+                                enemyType = Math.random() < 0.5 ? 'zombie' : 'skeleton';
+                            }
+                            this.enemies.push(new Enemy(spawnX, spawnY, enemyType));
+                        }
+                    }
+                }, 7000);
+            }
+
+            getNearbyStations() {
+                const playerTileX = Math.floor((this.player.x + this.player.width / 2) / TILE_SIZE);
+                const playerTileY = Math.floor((this.player.y + this.player.height / 2) / TILE_SIZE);
+                const stations = new Set(['none']);
+
+                for (let x = playerTileX - 4; x <= playerTileX + 4; x++) {
+                    for (let y = playerTileY - 4; y <= playerTileY + 4; y++) {
+                        const tile = this.world.getTile(x, y);
+                        if (tile === BLOCKS.FURNACE) stations.add('furnace');
+                        if (tile === BLOCKS.ANVIL) stations.add('anvil');
+                    }
+                }
+                return stations;
+            }
+
+            updateCamera() {
+                const targetX = this.player.x - this.canvas.width / 2;
+                const targetY = this.player.y - this.canvas.height / 2;
+                this.camera.x += (targetX - this.camera.x) * 0.12;
+                this.camera.y += (targetY - this.camera.y) * 0.12;
+
+                this.camera.x = Math.max(0, Math.min(this.world.width * TILE_SIZE - this.canvas.width, this.camera.x));
+                this.camera.y = Math.max(0, Math.min(this.world.height * TILE_SIZE - this.canvas.height, this.camera.y));
+
+                this.mouse.worldX = this.mouse.x + this.camera.x;
+                this.mouse.worldY = this.mouse.y + this.camera.y;
+            }
+
+            drawBackground() {
+                this.gameTime += 0.00005;
+                if (this.gameTime > 1) {
+                    this.gameTime = 0;
+                    this.bossSpawnedNaturally = false; // Reset natural spawn for next night
+                }
+
+                const playerDepthY = Math.floor(this.player.y / TILE_SIZE);
+                const isUnderground = playerDepthY > 48;
+
+                if (isUnderground) {
+                    this.ctx.fillStyle = '#0f172a';
+                    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+                    this.ctx.fillStyle = '#1e293b';
+                    for (let x = 0; x < this.canvas.width; x += 64) {
+                        for (let y = 0; y < this.canvas.height; y += 64) {
+                            if ((x + y) % 128 === 0) {
+                                this.ctx.fillRect(x, y, 48, 48);
+                            }
+                        }
+                    }
+                } else {
+                    let skyColor = '#38bdf8';
+                    if (this.gameTime < 0.18 || this.gameTime > 0.82) skyColor = '#070a13';
+                    else if (this.gameTime < 0.28) skyColor = '#f97316';
+                    else if (this.gameTime > 0.72) skyColor = '#ea580c';
+
+                    this.ctx.fillStyle = skyColor;
+                    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+                    this.ctx.fillStyle = 'rgba(15, 23, 42, 0.45)';
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(0, this.canvas.height);
+                    for (let i = 0; i < this.canvas.width; i += 80) {
+                        const h = Math.sin((i + this.camera.x * 0.2) * 0.006) * 90 + 220;
+                        this.ctx.lineTo(i, this.canvas.height - h);
+                    }
+                    this.ctx.lineTo(this.canvas.width, this.canvas.height);
+                    this.ctx.fill();
+                }
+            }
+
+            drawTiles() {
+                const startTileX = Math.max(0, Math.floor(this.camera.x / TILE_SIZE));
+                const endTileX = Math.min(this.world.width, Math.ceil((this.camera.x + this.canvas.width) / TILE_SIZE));
+                const startTileY = Math.max(0, Math.floor(this.camera.y / TILE_SIZE));
+                const endTileY = Math.min(this.world.height, Math.ceil((this.camera.y + this.canvas.height) / TILE_SIZE));
+
+                for (let x = startTileX; x < endTileX; x++) {
+                    for (let y = startTileY; y < endTileY; y++) {
+                        const tile = this.world.getTile(x, y);
+                        if (tile === BLOCKS.AIR) continue;
+
+                        const renderX = Math.floor(x * TILE_SIZE - this.camera.x);
+                        const renderY = Math.floor(y * TILE_SIZE - this.camera.y);
+
+                        if (textureAtlas.cache[tile]) {
+                            this.ctx.drawImage(textureAtlas.cache[tile], renderX, renderY);
+                        }
+                    }
+                }
+            }
+
+            drawMiningProgress() {
+                if (this.miningTarget && this.miningProgress > 0) {
+                    const renderX = Math.floor(this.miningTarget.x * TILE_SIZE - this.camera.x);
+                    const renderY = Math.floor(this.miningTarget.y * TILE_SIZE - this.camera.y);
+
+                    this.ctx.strokeStyle = '#eab308';
+                    this.ctx.lineWidth = 2;
+                    this.ctx.strokeRect(renderX, renderY, TILE_SIZE, TILE_SIZE);
+                }
+            }
+
+            setupUI() {
+                this.updateHotbarUI();
+                document.getElementById('closeCraftingBtn').onclick = () => this.toggleCraftingMenu();
+                document.getElementById('closeInventoryBtn').onclick = () => this.toggleInventoryMenu();
+                document.getElementById('craftBtn').onclick = () => this.craftSelectedItem();
+                document.getElementById('respawnBtn').onclick = () => this.player.respawn();
+
+                document.getElementById('unequipArmorBtn').onclick = () => {
+                    if (this.player.armor) {
+                        this.addItemToInventory(this.player.armor, 1);
+                        this.player.armor = null;
+                        this.renderInventoryGrid();
+                    }
+                };
+
+                // Setup Page Tabs
+                document.getElementById('tabBtn1').onclick = () => this.setCraftingPage(1);
+                document.getElementById('tabBtn2').onclick = () => this.setCraftingPage(2);
+                document.getElementById('tabBtn3').onclick = () => this.setCraftingPage(3);
+            }
+
+            setCraftingPage(page) {
+                this.currentCraftingPage = page;
+                this.selectedRecipeIndex = 0;
+
+                const b1 = document.getElementById('tabBtn1');
+                const b2 = document.getElementById('tabBtn2');
+                const b3 = document.getElementById('tabBtn3');
+
+                const activeClass = 'bg-amber-500 text-slate-950 shadow';
+                const inactiveClass = 'bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700';
+
+                b1.className = `px-3.5 py-1.5 rounded-lg text-xs font-bold transition ${page === 1 ? activeClass : inactiveClass}`;
+                b2.className = `px-3.5 py-1.5 rounded-lg text-xs font-bold transition ${page === 2 ? activeClass : inactiveClass}`;
+                b3.className = `px-3.5 py-1.5 rounded-lg text-xs font-bold transition ${page === 3 ? activeClass : inactiveClass}`;
+
+                this.renderCraftingRecipes();
+            }
+
+            getCurrentPageRecipes() {
+                if (this.currentCraftingPage === 1) return RECIPES_PAGE_1;
+                if (this.currentCraftingPage === 2) return RECIPES_PAGE_2;
+                return RECIPES_PAGE_3;
+            }
+
+            updateHotbarUI() {
+                const hotbarEl = document.getElementById('hotbar');
+                hotbarEl.innerHTML = '';
+
+                // Hotbar displays first 9 inventory slots
+                for (let index = 0; index < 9; index++) {
+                    const item = this.player.inventory[index];
+                    const slot = document.createElement('div');
+                    slot.className = `w-12 h-12 rounded-xl flex flex-col items-center justify-center relative cursor-pointer border transition-all ${
+                        index === this.player.selectedSlot ? 'bg-white/20 border-amber-400 scale-105 shadow-lg' : 'bg-slate-950/60 border-white/10 hover:bg-white/10'
+                    }`;
+
+                    if (item) {
+                        this.renderSlotContent(slot, item);
+                    }
+
+                    slot.onclick = () => {
+                        this.player.selectedSlot = index;
+                        this.updateHotbarUI();
+                    };
+
+                    hotbarEl.appendChild(slot);
+                }
+            }
+
+            renderSlotContent(slotEl, item) {
+                if (typeof item.id === 'number' && textureAtlas.cache[item.id]) {
+                    const img = document.createElement('img');
+                    img.src = textureAtlas.cache[item.id].toDataURL();
+                    img.className = 'w-7 h-7 pixelated';
+                    slotEl.appendChild(img);
+                } else {
+                    let iconName = '🗡️';
+                    if (item.id === ITEMS.SLIME_SWORD) iconName = '🗡️';
+                    else if (item.id === ITEMS.COPPER_SWORD) iconName = '🗡️';
+                    else if (item.id === ITEMS.COPPER_PICKAXE) iconName = '⛏️';
+                    else if (item.id === ITEMS.COPPER_AXE) iconName = '🪓';
+                    else if (item.id === ITEMS.IRON_SWORD) iconName = '⚔️';
+                    else if (item.id === ITEMS.IRON_PICKAXE) iconName = '⛏️';
+                    else if (item.id === ITEMS.IRON_AXE) iconName = '🪓';
+                    else if (item.id === ITEMS.GOLD_SWORD) iconName = '🔱';
+                    else if (item.id === ITEMS.GOLD_PICKAXE) iconName = '⛏️';
+                    else if (item.id === ITEMS.GOLD_AXE) iconName = '🪓';
+                    else if (item.id === ITEMS.IRON_BAR) iconName = '🪙';
+                    else if (item.id === ITEMS.GOLD_BAR) iconName = '🥇';
+                    else if (item.id === ITEMS.BOW) iconName = '🏹';
+                    else if (item.id === ITEMS.ARROW) iconName = '🎯';
+                    else if (item.id === ITEMS.GEL) iconName = '💧';
+                    else if (item.id === ITEMS.LIFE_CRYSTAL_ITEM) iconName = '❤️';
+                    else if (item.id === ITEMS.BOSS_SUMMON) iconName = '👁️';
+                    slotEl.innerHTML = `<span class="text-base">${iconName}</span>`;
+                }
+
+                if (item.count > 1) {
+                    slotEl.innerHTML += `<span class="absolute bottom-1 right-1.5 text-[10px] font-black text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">${item.count}</span>`;
+                }
+            }
+
+            toggleInventoryMenu() {
+                const invModal = document.getElementById('inventoryMenu');
+                const craftModal = document.getElementById('craftingMenu');
+                craftModal.classList.add('hidden'); // Ensure crafting is hidden
+
+                const isHidden = invModal.classList.contains('hidden');
+                if (isHidden) {
+                    invModal.classList.remove('hidden');
+                    this.renderInventoryGrid();
+                } else {
+                    invModal.classList.add('hidden');
+                }
+            }
+
+            renderInventoryGrid() {
+                const gridEl = document.getElementById('inventoryGrid');
+                gridEl.innerHTML = '';
+
+                this.player.inventory.forEach((item, index) => {
+                    const slot = document.createElement('div');
+                    slot.className = `w-12 h-12 rounded-xl flex flex-col items-center justify-center relative cursor-pointer border transition-all ${
+                        index < 9 ? 'bg-slate-900/90 border-amber-500/40' : 'bg-slate-950/70 border-white/10 hover:bg-white/10'
+                    }`;
+
+                    if (item) {
+                        this.renderSlotContent(slot, item);
+                    }
+
+                    slot.onclick = () => {
+                        if (item) {
+                            // Click to delete/trash item
+                            this.player.inventory[index] = null;
+                            this.renderInventoryGrid();
+                            this.updateHotbarUI();
+                            audio.playHurt();
+                        }
+                    };
+
+                    gridEl.appendChild(slot);
+                });
+
+                // Render Sidebar stats and equipment
+                document.getElementById('invStatHp').innerText = `${Math.ceil(this.player.hp)} / ${this.player.maxHp}`;
+                document.getElementById('invStatDef').innerText = this.player.getDefense();
+                
+                const currentItem = this.player.inventory[this.player.selectedSlot];
+                let weaponName = 'Кулаки';
+                if (currentItem?.id === ITEMS.COPPER_SWORD) weaponName = 'Мідний Меч';
+                else if (currentItem?.id === ITEMS.IRON_SWORD) weaponName = 'Залізний Меч';
+                else if (currentItem?.id === ITEMS.GOLD_SWORD) weaponName = 'Золотий Меч';
+                else if (currentItem?.id === ITEMS.SLIME_SWORD) weaponName = 'Слизовий Меч';
+                else if (currentItem?.id === ITEMS.BOW) weaponName = 'Дерев’яний Лук';
+                document.getElementById('invStatWeapon').innerText = weaponName;
+
+                const armorText = document.getElementById('invArmorName');
+                const unequipBtn = document.getElementById('unequipArmorBtn');
+                if (this.player.armor === ITEMS.IRON_ARMOR) {
+                    armorText.innerText = 'Залізна Броня (+8 Def)';
+                    unequipBtn.classList.remove('hidden');
+                } else if (this.player.armor === ITEMS.GOLD_ARMOR) {
+                    armorText.innerText = 'Золота Броня (+16 Def)';
+                    unequipBtn.classList.remove('hidden');
+                } else {
+                    armorText.innerText = '(Без броні)';
+                    unequipBtn.classList.add('hidden');
+                }
+            }
+
+            toggleCraftingMenu() {
+                const craftModal = document.getElementById('craftingMenu');
+                const invModal = document.getElementById('inventoryMenu');
+                invModal.classList.add('hidden'); // Ensure inventory is hidden
+
+                const isHidden = craftModal.classList.contains('hidden');
+                if (isHidden) {
+                    craftModal.classList.remove('hidden');
+                    this.renderCraftingRecipes();
+                } else {
+                    craftModal.classList.add('hidden');
+                }
+            }
+
+            renderCraftingRecipes() {
+                const listEl = document.getElementById('recipeList');
+                const stations = this.getNearbyStations();
+                const recipes = this.getCurrentPageRecipes();
+                listEl.innerHTML = '';
+
+                let stationNames = [];
+                if (stations.has('none')) stationNames.push('Руки');
+                if (stations.has('furnace')) stationNames.push('🔥 Піч');
+                if (stations.has('anvil')) stationNames.push('🔨 Ковальня');
+                document.getElementById('nearbyStationsText').innerText = `Станції поруч: ${stationNames.join(', ')}`;
+
+                recipes.forEach((recipe, index) => {
+                    const hasStation = stations.has(recipe.station);
+                    const canCraft = hasStation && this.canCraftRecipe(recipe);
+
+                    const itemEl = document.createElement('div');
+                    itemEl.className = `p-3 rounded-xl border flex justify-between items-center cursor-pointer transition ${
+                        this.selectedRecipeIndex === index ? 'bg-amber-500/20 border-amber-400' : 'bg-black/30 border-white/10 hover:bg-white/5'
+                    } ${!hasStation ? 'opacity-40' : (!canCraft ? 'opacity-60' : '')}`;
+
+                    itemEl.innerHTML = `
+                        <div>
+                            <div class="text-xs font-bold text-white">${recipe.name}</div>
+                            <div class="text-[10px] text-slate-400">${recipe.station === 'furnace' ? '[Потрібна Піч]' : (recipe.station === 'anvil' ? '[Потрібна Ковальня]' : '[Базовий крафт]')}</div>
+                        </div>
+                        <span class="text-[10px] font-semibold ${canCraft ? 'text-green-400' : 'text-red-400'}">${canCraft ? 'Готово' : (hasStation ? 'Бракує' : 'Неможливо')}</span>
+                    `;
+
+                    itemEl.onclick = () => {
+                        this.selectedRecipeIndex = index;
+                        this.renderCraftingRecipes();
+                    };
+
+                    listEl.appendChild(itemEl);
+                });
+
+                this.renderRecipeDetails();
+            }
+
+            canCraftRecipe(recipe) {
+                for (let ing of recipe.ingredients) {
+                    let found = 0;
+                    for (let item of this.player.inventory) {
+                        if (item && item.id === ing.id) found += item.count;
+                    }
+                    if (found < ing.count) return false;
+                }
+                return true;
+            }
+
+            renderRecipeDetails() {
+                const recipes = this.getCurrentPageRecipes();
+                const recipe = recipes[this.selectedRecipeIndex];
+                const detailsEl = document.getElementById('recipeDetails');
+                const craftBtn = document.getElementById('craftBtn');
+
+                if (!recipe) return;
+                const stations = this.getNearbyStations();
+                const canCraft = stations.has(recipe.station) && this.canCraftRecipe(recipe);
+
+                let ingHtml = recipe.ingredients.map(ing => {
+                    const name = BLOCK_DATA[ing.id]?.name || (ing.id === ITEMS.GEL ? 'Слизь' : ing.id);
+                    return `<div class="text-xs text-slate-300">• ${name}: <span class="font-bold text-amber-300">${ing.count} шт.</span></div>`;
+                }).join('');
+
+                detailsEl.innerHTML = `
+                    <h3 class="text-base font-bold text-white mb-2">${recipe.name}</h3>
+                    <div class="space-y-1 mb-4">
+                        <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Ресурси:</span>
+                        ${ingHtml}
+                    </div>
+                `;
+
+                craftBtn.disabled = !canCraft;
+            }
+
+            craftSelectedItem() {
+                const recipes = this.getCurrentPageRecipes();
+                const recipe = recipes[this.selectedRecipeIndex];
+                const stations = this.getNearbyStations();
+                if (!recipe || !stations.has(recipe.station) || !this.canCraftRecipe(recipe)) return;
+
+                for (let ing of recipe.ingredients) {
+                    let needed = ing.count;
+                    for (let item of this.player.inventory) {
+                        if (item && item.id === ing.id) {
+                            const take = Math.min(needed, item.count);
+                            item.count -= take;
+                            needed -= take;
+                            if (needed <= 0) break;
+                        }
+                    }
+                }
+
+                for (let i = 0; i < this.player.inventory.length; i++) {
+                    if (this.player.inventory[i] && this.player.inventory[i].count <= 0) {
+                        this.player.inventory[i] = null;
+                    }
+                }
+
+                this.addItemToInventory(recipe.result.id, recipe.result.count);
+                this.renderCraftingRecipes();
+                this.updateHotbarUI();
+                audio.playPlace();
+            }
+
+            updateHUD() {
+                document.getElementById('hpFill').style.width = `${(this.player.hp / this.player.maxHp) * 100}%`;
+                document.getElementById('hpText').innerText = `${Math.ceil(this.player.hp)} / ${this.player.maxHp}`;
+
+                document.getElementById('defenseText').innerText = this.player.getDefense();
+                document.getElementById('armorNameText').innerText = this.player.armor === ITEMS.GOLD_ARMOR ? '(Золота Броня)' : (this.player.armor === ITEMS.IRON_ARMOR ? '(Залізна Броня)' : '(Без броні)');
+
+                const hours = Math.floor(this.gameTime * 24);
+                const minutes = Math.floor((this.gameTime * 24 % 1) * 60);
+                document.getElementById('timeText').innerText = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+
+                const isNight = this.gameTime < 0.2 || this.gameTime > 0.8;
+                document.getElementById('sunMoonIcon').innerText = isNight ? '🌙' : '☀️';
+
+                const boss = this.enemies.find(e => e.isBoss);
+                const bossHpContainer = document.getElementById('bossHpContainer');
+                if (boss) {
+                    bossHpContainer.classList.remove('hidden');
+                    const percent = Math.max(0, Math.floor((boss.hp / boss.maxHp) * 100));
+                    document.getElementById('bossHpFill').style.width = `${percent}%`;
+                    document.getElementById('bossHpText').innerText = `${Math.ceil(boss.hp)} / ${boss.maxHp}`;
+                    document.getElementById('bossHpPercentText').innerText = `${percent}%`;
+                } else {
+                    bossHpContainer.classList.add('hidden');
+                }
+            }
+
+            loop() {
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+                this.player.update(this.keys, this.world, this.particles);
+                this.handleMining();
+                this.updateCamera();
+
+                this.drawBackground();
+                this.drawTiles();
+
+                for (let i = this.arrows.length - 1; i >= 0; i--) {
+                    const arrow = this.arrows[i];
+                    arrow.update(this.world, this.enemies, this.particles, this.floatingTexts, audio);
+                    arrow.draw(this.ctx, this.camera);
+                    if (!arrow.active) this.arrows.splice(i, 1);
+                }
+
+                for (let i = this.enemies.length - 1; i >= 0; i--) {
+                    const enemy = this.enemies[i];
+                    enemy.update(this.world, this.player, this.particles, audio);
+                    enemy.draw(this.ctx, this.camera);
+
+                    if (!this.player.isDead) {
+                        const dist = Math.hypot((enemy.x + enemy.width / 2) - (this.player.x + this.player.width / 2), (enemy.y + enemy.height / 2) - (this.player.y + this.player.height / 2));
+                        if (dist < (enemy.isBoss ? 32 : 18)) {
+                            const enemyName = enemy.isBoss ? 'Око Ктулху' : (enemy.type === 'zombie' ? 'Зомбі' : (enemy.type === 'skeleton' ? 'Скелет' : 'Слизень'));
+                            if (this.player.takeDamage(enemy.damage, `Вас убив ${enemyName}!`)) {
+                                this.floatingTexts.push(new FloatingText(this.player.x, this.player.y, `-${Math.max(1, enemy.damage - this.player.getDefense())}`, '#ef4444'));
+                            }
+                        }
+                    }
+
+                    if (enemy.hp <= 0) {
+                        if (enemy.type === 'slime') {
+                            // Slimes always drop 1-2 Gel
+                            const gelDropCount = Math.floor(Math.random() * 2) + 1;
+                            this.addItemToInventory(ITEMS.GEL, gelDropCount);
+                            this.floatingTexts.push(new FloatingText(enemy.x, enemy.y, `+${gelDropCount} Слизь!`, '#38bdf8'));
+
+                            // Slimes drop Slime Sword on rare chance
+                            if (Math.random() < 0.2) {
+                                this.addItemToInventory(ITEMS.SLIME_SWORD, 1);
+                                this.floatingTexts.push(new FloatingText(enemy.x, enemy.y, '+1 Слизовий Меч!', '#10b981'));
+                            }
+                        }
+                        if (enemy.isBoss) {
+                            this.addItemToInventory(ITEMS.GOLD_BAR, 10);
+                            this.floatingTexts.push(new FloatingText(enemy.x, enemy.y, 'БОСА ПЕРЕМОЖЕНО!', '#eab308'));
+                        }
+                        this.enemies.splice(i, 1);
+                    }
+                }
+
+                for (let i = this.particles.length - 1; i >= 0; i--) {
+                    const p = this.particles[i];
+                    p.update();
+                    p.draw(this.ctx, this.camera);
+                    if (p.life <= 0) this.particles.splice(i, 1);
+                }
+
+                for (let i = 0; i < this.floatingTexts.length; i++) {
+                    const ft = this.floatingTexts[i];
+                    ft.update();
+                    ft.draw(this.ctx, this.camera);
+                    if (ft.life <= 0) {
+                        this.floatingTexts.splice(i, 1);
+                        i--;
+                    }
+                }
+
+                this.player.draw(this.ctx, this.camera);
+                this.drawMiningProgress();
+                this.updateHUD();
+
+                requestAnimationFrame(() => this.loop());
+            }
+        }
+
+        window.onload = () => {
+            const game = new Game();
+            game.loop();
+        };
+    </script>
+</body>
+</html>
